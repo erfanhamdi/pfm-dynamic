@@ -29,6 +29,8 @@ parser.add_argument('--g_c', type=float, default=1.0, help='G_c')
 parser.add_argument('--e_', type=float, default=1000.0e3, help='E')
 parser.add_argument('--domain_size', type=float, default=2.0, help='Domain size')
 parser.add_argument('--num_steps', type=int, default=5000, help='Number of time steps')
+parser.add_argument('--init_crack_add', type=str, default="pfm_dataset/initial_cracks", help='Number of time steps')
+parser.add_argument('--delta_T', type=float, default=1e-6, help='delta T')
 args = parser.parse_args()
 
 seed = args.seed - 1
@@ -58,11 +60,11 @@ pc = PETSc.PC.Type.HYPRE
 rtol = 1e-8
 max_it = 1000
 
-initial_cracks = glob.glob("./initial_cracks/*.npy")
+initial_cracks = glob.glob(f"{args.init_crack_add}/*.npy")
 initial_cracks = sorted(initial_cracks, key=lambda x: int(x.split("/")[-1].split(".")[0].split("_")[-1]))
 crack_pattern = np.load(initial_cracks[seed])
 seed_val = int(initial_cracks[seed].split("/")[-1].split(".")[0])
-out_file = f"./results/{prefix}/{seed_val}"
+out_file = f"pfm_dataset/results/{prefix}/{seed_val}"
 results_folder = Path(out_file)
 
 domain = mesh.create_rectangle(MPI.COMM_WORLD, [np.array([0.0, 0.0]), np.array([domain_size, domain_size])], [mesh_size, mesh_size], cell_type=mesh.CellType.quadrilateral)
@@ -88,7 +90,7 @@ except RuntimeError as e:
         print("Will try individual file writes during simulation.")
     file_init_success = False
 
-delta_T1 = fem.Constant(domain, 1e-6)
+delta_T1 = fem.Constant(domain, args.delta_T)
 G_c_ = fem.Constant(domain, g_c_)
 l_0_ = fem.Constant(domain, 0.01)
 E = fem.Constant(domain, e_)

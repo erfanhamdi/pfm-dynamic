@@ -1,4 +1,7 @@
-results/
+results*/
 __pycache__/
 src/pfm_dataset.egg-info/
+initial_cracks*/
+jobs/
+logs/
 *.png
