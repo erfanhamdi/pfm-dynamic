@@ -1,11 +1,28 @@
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-from dolfinx import plot
-import pyvista as pv
-pv.start_xvfb()
-
 def plotter_func(u=None, dim=2, mesh=None, title="", colorbar=False):
+    """
+    Render a quick screenshot using PyVista/VTK.
+
+    Notes for HPC/headless runs:
+    - This function is intentionally **opt-in** to avoid hard-crashing MPI jobs when
+      no valid X server is available.
+    - Enable by setting env var: PFM_ENABLE_PYVISTA_PLOTTING=1
+    """
+    if os.environ.get("PFM_ENABLE_PYVISTA_PLOTTING", "0") != "1":
+        return
+
+    # Local imports so that simply importing this module does NOT pull in VTK
+    # or try to touch DISPLAY / Xvfb.
+    from dolfinx import plot  # pylint: disable=import-error
+    import pyvista as pv  # type: ignore
+
+    # If the user wants Xvfb, allow it, but keep it opt-in as well.
+    if os.environ.get("PFM_START_XVFB", "0") == "1":
+        pv.start_xvfb()
+
     V = u.ufl_function_space()
     if mesh is None:
         mesh = V.mesh
@@ -39,6 +56,7 @@ def plotter_func(u=None, dim=2, mesh=None, title="", colorbar=False):
         if colorbar:
             u_plotter.add_scalar_bar()
         u_plotter.screenshot(f"{title}.png")
+        u_plotter.close()
 
 def plot_force_disp(B, name, out_file):
     plt.figure()

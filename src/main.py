@@ -420,13 +420,13 @@ for i in range(num_steps+1):
     if i % save_freq == 0:
         out_file_name.write_function(p_new, i * delta_T.value)
         out_file_name_u.write_function(u_new, i * delta_T.value)
-        
-        plotter_func(p_new, dim=1, mesh = domain, title=f"{out_file}/p_{i}")
-        if rank == 0:
-            print(f"step = {i},  iter = {staggered_iter}, error total = {error_total.value}", flush=True)
-            plot_force_disp(B_bot, "bot_rxn", out_file)
-            if sim_case == "tension":
-                plot_force_disp(B_left, "left_rxn", out_file)
+        if i % save_freq * 20 == 0:
+            # plotter_func(p_new, dim=1, mesh = domain, title=f"{out_file}/p_{i}")
+            if rank == 0:
+                print(f"step = {i},  iter = {staggered_iter}, error total = {error_total.value}", flush=True)
+                plot_force_disp(B_bot, "bot_rxn", out_file)
+                if sim_case == "tension":
+                    plot_force_disp(B_left, "left_rxn", out_file)
 
 end_time = time.time()
 total_time = end_time - start_time
