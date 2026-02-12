@@ -19,7 +19,7 @@ os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"  # Disable file locking
 os.environ["HDF5_MPI_OPS_COLLECTIVE"] = "TRUE" # Enable collective operations
 
 parser = argparse.ArgumentParser(description='2D internal cracks')
-parser.add_argument('--seed', type=int, default=1, help='Random seed')
+parser.add_argument('--seed', type=str, default=1, help='Random seed')
 parser.add_argument('--model', type=str, default="miehe", help='Model to use')
 parser.add_argument('--mesh_size', type=int, default=100, help='Mesh size')
 parser.add_argument('--prefix', type=str, default="test", help='Output file')
@@ -62,8 +62,9 @@ max_it = 1000
 
 initial_cracks = glob.glob(f"{args.init_crack_add}/*.npy")
 initial_cracks = sorted(initial_cracks, key=lambda x: int(x.split("/")[-1].split(".")[0].split("_")[-1]))
-crack_pattern = np.load(f"{args.init_crack_add}/{seed}.npy")
 seed_val = int(seed)
+print(f"{args.init_crack_add}/{seed_val}.npy")
+crack_pattern = np.load(f"{args.init_crack_add}/{seed_val}.npy")
 out_file = f"pfm_dataset/results/{prefix}/{seed_val}"
 results_folder = Path(out_file)
 
