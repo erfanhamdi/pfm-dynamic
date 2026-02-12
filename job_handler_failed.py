@@ -7,18 +7,18 @@ import pandas as pd
 
 rerun_jobs = True
 if rerun_jobs:
-    failed_files = "/projectnb/lejlab2/erfan/pfmv2/pfm_lite/pfm_dataset/results/tension_amor_3c/failed_jobs.csv"
+    failed_files = "/projectnb/lejlab2/erfan/pfmv2/pfm_lite/pfm_dataset/results/tension_amor_2c/check_sims_report.csv"
     failed_jobs_df = pd.read_csv(failed_files)
-    failed_task_ids = failed_jobs_df['task_id'].tolist()
+    failed_task_ids = failed_jobs_df['run_id'].tolist()
 
 for failed_ids in failed_task_ids:    
-    python_file = 'pfm_dataset/src/main.py'
+    python_file = 'pfm_dataset/src/main_failed.py'
     simulation_case = ['tension']
-    job_array = f'{failed_ids}'
+    seed = f'{failed_ids}'
     ds_models = ['amor']
     mesh_size_ = 800
-    comment = "3c"
-    init_crack_add = "pfm_dataset/initial_cracks_3c"
+    comment = "2c"
+    init_crack_add = "pfm_dataset/initial_cracks_2c"
     delta_T = 1e-6
     num_steps = 5000
     g_c_ = 1/1
@@ -36,7 +36,7 @@ for failed_ids in failed_task_ids:
     for sim_case_ in simulation_case:
         for model_ in ds_models:
             out_file = f'{sim_case_}_{model_}_{comment}'
-            job_name = f'{sim_case_[0]}_{model_[0]}'
+            job_name = f'f_{sim_case_[0]}_{model_[0]}'
             os.makedirs(f'pfm_dataset/logs/{job_name}', exist_ok=True)
             job_script = f"""#!/bin/bash -l
     #$ -pe mpi_{num_cores}_tasks_per_node {num_cores}
@@ -46,7 +46,6 @@ for failed_ids in failed_task_ids:
     #$ -j y
     #$ -m beas
     #$ -o pfm_dataset/logs/{job_name}/
-    #$ -t {job_array}
     ## end of qsub options
 
     echo "=========================================================="
@@ -60,7 +59,7 @@ for failed_ids in failed_task_ids:
     module load openmpi
     module load miniconda
     conda activate fenicsx-mpi-env
-    mpirun -np $NSLOTS python3 {python_file} --sim_case {sim_case_} --delta_T {delta_T} --num_steps {num_steps} --init_crack_add {init_crack_add} --model {model_} --mesh_size {mesh_size_} --prefix {out_file} --job_id $JOB_ID --seed $SGE_TASK_ID --g_c {g_c_} --e_ {e_} --domain_size {domain_size}
+    mpirun -np $NSLOTS python3 {python_file} --seed {seed} --sim_case {sim_case_} --delta_T {delta_T} --num_steps {num_steps} --init_crack_add {init_crack_add} --model {model_} --mesh_size {mesh_size_} --prefix {out_file} --job_id $JOB_ID --seed $SGE_TASK_ID --g_c {g_c_} --e_ {e_} --domain_size {domain_size}
     # Clean up task-specific cache
     rm -rf $FFCX_CACHE_DIR
             """
