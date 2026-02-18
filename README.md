@@ -2,6 +2,7 @@
 ![os](https://img.shields.io/badge/os-ubuntu%20-blue.svg)
 ![license](https://img.shields.io/badge/license-MIT-green.svg)
 [![tests](https://github.com/erfanhamdi/pfm_dataset/workflows/tests/badge.svg)](https://github.com/erfanhamdi/pfm_dataset/actions) 
+# Github address of dvuuploader https://github.com/GlobalDataverseCommunityConsortium/dataverse-uploader/wiki/DVUploader,-a-Command-line-Bulk-Uploader-for-Dataverse
 # Phase-field fracture benchmark dataset for solid mechanics
 In this work, we have implemented multiple modeling choices for PFMs, specifically multiple energy decomposition methods, and have created a diverse, and challenging dataset of crack propagation inside a domain with varying initial crack locations and boundary conditions. Specifically, the dataset includes simulations from three energy decomposition methods, two distinct boundary conditions, and 1000 sets of initial conditions. For each sample, we publish 100 time steps, capturing the temporal evolution of crack propagation and providing rich data for training and evaluating machine learning models.
 ![dataset](Figs/dataset-nolabel.png)
