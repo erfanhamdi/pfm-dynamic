@@ -18,8 +18,8 @@ os.environ["HDF5_MPI_OPS_COLLECTIVE"] = "TRUE"
 
 parser = argparse.ArgumentParser(description='2D internal cracks - DYNAMIC tension')
 parser.add_argument('--seed', type=int, default=1)
-parser.add_argument('--mesh_size', type=int, default=400)
-parser.add_argument('--prefix', type=str, default="test")
+parser.add_argument('--mesh_size', type=int, default=800)
+parser.add_argument('--prefix', type=str, default="kalthof")
 parser.add_argument('--job_id', type=int, default=0)
 parser.add_argument('--g_c', type=float, default=2.213e4)
 parser.add_argument('--e_', type=float, default=190.0e9)
@@ -29,7 +29,7 @@ parser.add_argument('--e_', type=float, default=190.0e9)
 # but if your E is in kPa scale, adjust accordingly.
 parser.add_argument('--rho', type=float, default=8000.0, help='Mass density kg/m3')
 # ── END CHANGE 1 ──────────────────────────────────────────────────────────────
-parser.add_argument('--domain_size', type=float, default=2.0)
+parser.add_argument('--domain_size', type=float, default=0.1)
 parser.add_argument('--num_steps', type=int, default=5000)
 parser.add_argument('--init_crack_add', type=str, default="pfm_lite/initial_cracks")
 # ── CHANGE 2 ──────────────────────────────────────────────────────────────────
@@ -41,7 +41,7 @@ parser.add_argument('--delta_T', type=float, default=0.0, help='Override dt (0 =
 # ── CHANGE 3 ──────────────────────────────────────────────────────────────────
 # Total physical simulation time (seconds).  Replace the old "num_steps * delta_T"
 # loading ramp with an actual time horizon.
-parser.add_argument('--T_final', type=float, default=90e-5, help='Total physical time (s)')
+parser.add_argument('--T_final', type=float, default=90e-6, help='Total physical time (s)')
 # ── END CHANGE 3 ──────────────────────────────────────────────────────────────
 # ── CHANGE 4 ──────────────────────────────────────────────────────────────────
 # Loading ramp parameters: the imposed velocity is ramped up linearly over T_ramp
@@ -87,11 +87,7 @@ pc = PETSc.PC.Type.HYPRE
 rtol = 1e-8
 max_it = 1000
 
-initial_cracks = glob.glob(f"{args.init_crack_add}/*.npy")
-initial_cracks = sorted(initial_cracks, key=lambda x: int(x.split("/")[-1].split(".")[0].split("_")[-1]))
-crack_pattern = np.load(initial_cracks[seed])
-seed_val = int(initial_cracks[seed].split("/")[-1].split(".")[0])
-out_file = f"pfm_lite/results/{prefix}/{seed_val}"
+out_file = f"pfm_lite/results/{prefix}/"
 results_folder = Path(out_file)
 
 domain = mesh.create_rectangle(
@@ -102,7 +98,7 @@ domain = mesh.create_rectangle(
 )
 
 if rank == 0:
-    print(f"seed: {seed_val}, out_file = {out_file}", flush=True)
+    print(f"out_file = {out_file}", flush=True)
     Path(out_file).mkdir(parents=True, exist_ok=True)
     results_folder.mkdir(exist_ok=True, parents=True)
 
@@ -143,6 +139,7 @@ if args.l_0 > 0.0:
 else:
     l_0_val = 2.0 * h_min
 l_0_ = fem.Constant(domain, l_0_val)
+# l_0_ = fem.Constant(domain, 1.95e-4)
 
 c_p_val = float(np.sqrt(e_ * (1.0 - nu_) / (rho_ * (1.0 + nu_) * (1.0 - 2.0 * nu_))))
 dt_cfl  = h_min / c_p_val / safety_factor
@@ -153,13 +150,13 @@ else:
     dt_val = dt_cfl
 
 dt = fem.Constant(domain, dt_val)   # physical time step (s)
-
+# dt = fem.Constant(domain, 2.65e-9)   # physical time step (s)
 if rank == 0:
     print(f"h_min = {h_min:.4e} m,  c_p = {c_p_val:.2f} m/s,  dt_CFL = {dt_cfl:.4e} s,  dt_used = {dt_val:.4e} s")
     print(f"l_0 = {l_0_val:.4e} m  (h_min = {h_min:.4e} m,  ratio l_0/h = {l_0_val/h_min:.2f})")
 
 num_steps = int(np.ceil(T_final / dt_val))
-save_freq  = max(1, num_steps // 200)
+save_freq  = max(1, num_steps // 600)
 
 if rank == 0:
     print(f"num_steps = {num_steps},  save_freq = {save_freq}")
@@ -197,32 +194,23 @@ fdim = tdim - 1
 
 # ── Boundary markers ─────────────────────────────────────────────────────────
 def top_boundary(x):    return np.isclose(x[1], domain_size)
-def left_boundary(x):   return np.isclose(x[0], 0)
-def right_boundary(x):  return np.isclose(x[0], domain_size)
+def left_boundary(x):   return np.logical_and(np.isclose(x[0], 0.0), x[1] <= 0.025)
 def bottom_boundary(x): return np.isclose(x[1], 0.0)
 
 top_facet   = mesh.locate_entities_boundary(domain, fdim, top_boundary)
 bot_facet   = mesh.locate_entities_boundary(domain, fdim, bottom_boundary)
-right_facet = mesh.locate_entities_boundary(domain, fdim, right_boundary)
 left_facet  = mesh.locate_entities_boundary(domain, fdim, left_boundary)
 
-marked_facets = np.hstack([top_facet, bot_facet, right_facet, left_facet])
+marked_facets = np.hstack([top_facet, bot_facet, left_facet])
 marked_values = np.hstack([
     np.full_like(top_facet, 1),
     np.full_like(bot_facet, 2),
-    np.full_like(right_facet, 3),
-    np.full_like(left_facet, 4)
+    np.full_like(left_facet, 3)
 ])
 sorted_facets = np.argsort(marked_facets)
 facet_tag = mesh.meshtags(domain, fdim, marked_facets[sorted_facets], marked_values[sorted_facets])
-
-top_y_dofs  = fem.locate_dofs_topological(W.sub(1), fdim, top_facet)
 bot_y_dofs  = fem.locate_dofs_topological(W.sub(1), fdim, bot_facet)
-bot_x_dofs  = fem.locate_dofs_topological(W.sub(0), fdim, bot_facet)
-right_x_dofs = fem.locate_dofs_topological(W.sub(0), fdim, right_facet)
 left_x_dofs  = fem.locate_dofs_topological(W.sub(0), fdim, left_facet)
-left_y_dofs  = fem.locate_dofs_topological(W.sub(1), fdim, left_facet)
-top_phi_dofs = fem.locate_dofs_topological(V, fdim, top_facet)
 # ── CHANGE 8 ──────────────────────────────────────────────────────────────────
 # Boundary conditions for the EXPLICIT dynamic scheme.
 #
@@ -244,28 +232,23 @@ top_phi_dofs = fem.locate_dofs_topological(V, fdim, top_facet)
 #                         = 0                           for t >  T_ramp
 #
 # These are stored as FEniCSx Constants and updated in the loop.
-u_bc_top_disp = fem.Constant(domain, default_scalar_type(0.0))  # u_imp(t)
-u_bc_top_vel  = fem.Constant(domain, default_scalar_type(0.0))  # v_imp(t)
-u_bc_top_acc  = fem.Constant(domain, default_scalar_type(0.0))  # a_imp(t)
+u_bc_left_disp = fem.Constant(domain, default_scalar_type(0.0))  # u_imp(t)
+u_bc_left_vel  = fem.Constant(domain, default_scalar_type(0.0))  # v_imp(t)
+u_bc_left_acc  = fem.Constant(domain, default_scalar_type(0.0))  # a_imp(t)
 
 # Displacement BCs (applied to u_new after Verlet predictor)
 bc_bot_y      = fem.dirichletbc(default_scalar_type(0.0), bot_y_dofs,   W.sub(1))
-bc_bot_x      = fem.dirichletbc(default_scalar_type(0.0), bot_x_dofs,   W.sub(0))
-bc_top_y_disp = fem.dirichletbc(u_bc_top_disp, top_y_dofs, W.sub(1))
-bc_left_x     = fem.dirichletbc(default_scalar_type(0.0), left_x_dofs,  W.sub(0))
-bc_right_x    = fem.dirichletbc(default_scalar_type(0.0), right_x_dofs, W.sub(0))
-bc_phi_top = fem.dirichletbc(default_scalar_type(0.0), top_phi_dofs, V)
-
-bc_u = [bc_bot_y, bc_top_y_disp, bc_bot_x]
+bc_left_x_disp = fem.dirichletbc(u_bc_left_disp, left_x_dofs, W.sub(0))
+bc_u = [bc_bot_y, bc_left_x_disp]
 bc_phi = []
 
 # Velocity BCs (applied to v_new after velocity corrector)
-bc_top_y_vel = fem.dirichletbc(u_bc_top_vel, top_y_dofs, W.sub(1))
-bc_v = [bc_bot_y, bc_top_y_vel]
+bc_left_x_vel = fem.dirichletbc(u_bc_left_vel, left_x_dofs, W.sub(0))
+bc_v = [bc_bot_y, bc_left_x_vel]
 
 # Acceleration BCs (applied to a_new after acceleration update)
-bc_top_y_acc = fem.dirichletbc(u_bc_top_acc, top_y_dofs, W.sub(1))
-bc_a = [bc_bot_y, bc_top_y_acc]
+bc_left_x_acc = fem.dirichletbc(u_bc_left_acc, left_x_dofs, W.sub(0))
+bc_a = [bc_bot_y, bc_left_x_acc]
 # ── END CHANGE 8 ──────────────────────────────────────────────────────────────
 
 ds = ufl.Measure("ds", domain=domain, subdomain_data=facet_tag)
@@ -327,8 +310,9 @@ def H_init(dist_list, l_0, G_c):
     H[mask0] = ((phi_c / (1 - phi_c)) * G_c.value / (2 * l_0.value)) * (1 - (2 * distances[mask0] / l_0.value))
     return H
 
-A_ = crack_pattern[:, 0, :] / (2 / domain_size)
-B_ = crack_pattern[:, 1, :] / (2 / domain_size)
+crack_pattern = np.array([[[0, 0.025], [0.05, 0.025]]])
+A_ = crack_pattern[:, 0, :]
+B_ = crack_pattern[:, 1, :]
 points = domain.geometry.x[:, :2]
 dist_list = []
 for idx in range(len(A_)):
@@ -336,7 +320,7 @@ for idx in range(len(A_)):
     dist_list.append(distances)
 H_init_.x.array[:] = H_init(dist_list, l_0_, G_c_)
 H_old.interpolate(H_init_)
-
+# plotter_func(H_old, title=f"{out_file}/H_init")
 # ── CHANGE 10 ─────────────────────────────────────────────────────────────────
 # Phase-field problem (UNCHANGED from quasi-static).
 # The phase-field equation has no time derivative — it is solved as a linear
@@ -457,6 +441,75 @@ H_expr = fem.Expression(
     VV.element.interpolation_points()
 )
 
+# ── Post-processing — matches PhaFiDyn_KalthoffWinkler_Original_AT2.py ──────
+# Elastic energy : E_elas = ( g(d)·Psi+ + Psi- ) dx      with g(d)=(1-d)^2 + kappa
+# Kinetic energy : 0.5·rho·v·v dx
+# Fracture energy: (Gc/c0)·( alpha(d)/l + l·|grad d|^2 ) dx   (AT2: c0=2, alpha=d^2)
+# External energy: u·b dx   (b = 0 here, kept for total-energy balance)
+#
+# Quadrature degree for energy integrals is 4 (matches the reference).  The
+# strain-energy decomposition contains sqrt(...) and abs(...) which are NOT
+# polynomial, so the degree-2 rule used for the mechanics under-integrates
+# them and distorts the reported elastic-energy curve.
+kappa_res = 1.0e-12
+c0_AT2    = 2.0
+b_body    = fem.Constant(domain, default_scalar_type((0.0, 0.0)))
+dx_hi     = ufl.Measure("dx", domain=domain, metadata={"quadrature_degree": 4})
+
+E_elastic_form  = fem.form(
+    (((1.0 - p_new)**2 + kappa_res) * psi_pos_m(u_new) + psi_neg_m(u_new)) * dx_hi
+)
+E_kinetic_form  = fem.form(0.5 * rho * ufl.inner(v_n, v_n) * dx_hi)
+E_fracture_form = fem.form(
+    (G_c_ / c0_AT2) * (p_new**2 / l_0_ + l_0_ * ufl.dot(ufl.grad(p_new), ufl.grad(p_new))) * dx_hi
+)
+E_external_form = fem.form(ufl.dot(u_new, b_body) * dx_hi)
+
+# Diagnostic splits — compare contributions to isolate the 5x discrepancy.
+psi_full_ufl = 0.5 * lmbda * ufl.tr(epsilon(u_new))**2 + mu * ufl.inner(epsilon(u_new), epsilon(u_new))
+E_pos_form    = fem.form(((1.0 - p_new)**2 + kappa_res) * psi_pos_m(u_new) * dx_hi)
+E_neg_form    = fem.form(psi_neg_m(u_new) * dx_hi)
+E_full_form   = fem.form(((1.0 - p_new)**2 + kappa_res) * psi_full_ufl * dx_hi)
+
+# Crack-tip tracking — mirrors reference: threshold 0.95, two candidates
+# (point with maximum y, point with maximum x).  Coordinates only; velocity
+# is derived offline from the saved data.
+phi_threshold    = 0.95
+default_tip      = (0.05, 0.025 + 2.0 * 1.95e-4)
+V_dof_coords     = V.tabulate_dof_coordinates()[:V.dofmap.index_map.size_local, :2]
+
+def crack_tip_coords():
+    """Return ((x_at_maxY, y_maxY), (x_maxX, y_at_maxX)); valid on rank 0."""
+    phi_local = p_new.x.array[:V.dofmap.index_map.size_local]
+    mask = phi_local >= phi_threshold
+    if mask.any():
+        coords = V_dof_coords[mask]
+        iY = int(np.argmax(coords[:, 1]))
+        iX = int(np.argmax(coords[:, 0]))
+        loc_yval = float(coords[iY, 1]); loc_yx = (float(coords[iY, 0]), float(coords[iY, 1]))
+        loc_xval = float(coords[iX, 0]); loc_xx = (float(coords[iX, 0]), float(coords[iX, 1]))
+    else:
+        loc_yval = -1.0; loc_yx = default_tip
+        loc_xval = -1.0; loc_xx = default_tip
+
+    gY_vals = domain.comm.gather(loc_yval, root=0)
+    gX_vals = domain.comm.gather(loc_xval, root=0)
+    gY_pts  = domain.comm.gather(loc_yx,   root=0)
+    gX_pts  = domain.comm.gather(loc_xx,   root=0)
+    if rank != 0:
+        return None, None
+    gYv = np.array(gY_vals); gXv = np.array(gX_vals)
+    tipY = gY_pts[int(np.argmax(gYv))] if (gYv >= 0).any() else default_tip
+    tipX = gX_pts[int(np.argmax(gXv))] if (gXv >= 0).any() else default_tip
+    return tipY, tipX
+
+# Data rows mirror reference's .data file (minus the staggered-iteration
+# counters that don't apply here because the scheme is single-pass explicit):
+#   [Incr, t, E_elastic, E_kinetic, E_fracture, E_external, E_total,
+#    phi_min, phi_max, x_at_maxY, y_maxY, x_maxX, y_at_maxX,
+#    error_Linf, step_wallclock, dt]
+Data = []
+
 # ── CHANGE 13 ─────────────────────────────────────────────────────────────────
 # MAIN TIME LOOP — explicit Verlet + staggered phase-field.
 #
@@ -480,29 +533,28 @@ H_expr = fem.Expression(
 dt_val_f = float(dt.value)
 
 def loading(t):
-    """C^2-smooth ramp: 5th-order polynomial on [0, T_ramp], linear after.
+    """Kalthoff-Winkler quadratic velocity ramp.
 
-    Satisfies u(0)=v(0)=a(0)=0, v(T_ramp)=v_imp, a(T_ramp)=0 so the boundary
-    kinematics are continuous with the interior initial conditions (no shock).
+    v rises linearly from 0 to v_imp over [0, T_ramp] and holds constant after.
+    u is the C^1 integral; a is the constant ramp acceleration (step to 0 at T_ramp).
     """
     if t <= T_ramp:
-        tau = t / T_ramp
-        u  = v_imp * T_ramp * tau**4 * (2.5 - 3.0 * tau + tau**2)
-        v  = v_imp * tau**3 * (10.0 - 15.0 * tau + 6.0 * tau**2)
-        a  = 30.0 * v_imp / T_ramp * tau**2 * (1.0 - tau)**2
+        u = v_imp * t**2 / (2.0 * T_ramp)
+        v = v_imp * t / T_ramp
+        a = v_imp / T_ramp
     else:
-        u  = v_imp * (t - 0.5 * T_ramp)
-        v  = v_imp
-        a  = 0.0
+        u = v_imp * (t - 0.5 * T_ramp)
+        v = v_imp
+        a = 0.0
     return u, v, a
 
 # ── Initial state at t = 0 ───────────────────────────────────────────────────
-# Set BC values at t=0, enforce them on u_n, then compute p_0 and a_0 so the
+# Set BC values at t=0, enforce them on u_n, then compute v_0 and a_0 so the
 # Velocity-Verlet step has a consistent starting acceleration.
 u0, v0, a0 = loading(0.0)
-u_bc_top_disp.value = u0
-u_bc_top_vel.value  = v0
-u_bc_top_acc.value  = a0
+u_bc_left_disp.value = u0
+u_bc_left_vel.value  = v0
+u_bc_left_acc.value  = a0
 
 fem.set_bc(u_n.x.petsc_vec, bc_u)
 u_n.x.scatter_forward()
@@ -540,13 +592,14 @@ out_file_name_u.write_function(u_new, 0.0)
 
 # ── Main time loop ───────────────────────────────────────────────────────────
 for i in range(1, num_steps + 1):
+    step_wall_start = time.time()
     t_phys = i * dt_val_f
 
     # A. Update imposed loading (displacement, velocity, acceleration at t_phys)
     u_imp_val, v_imp_val, a_imp_val = loading(t_phys)
-    u_bc_top_disp.value = u_imp_val
-    u_bc_top_vel.value  = v_imp_val
-    u_bc_top_acc.value  = a_imp_val
+    u_bc_left_disp.value = u_imp_val
+    u_bc_left_vel.value  = v_imp_val
+    u_bc_left_acc.value  = a_imp_val
 
     if rank == 0 and i % save_freq == 0:
         print(f"step {i}/{num_steps},  t = {t_phys:.4e} s,  u_imp = {u_imp_val:.4e} m", flush=True)
@@ -589,6 +642,13 @@ for i in range(1, num_steps + 1):
     fem.set_bc(v_new.x.petsc_vec, bc_v)
     v_new.x.scatter_forward()
 
+    # Phase-field L-inf increment per step (reference's ERROR field).
+    phi_diff_local = float(np.max(np.abs(
+        p_new.x.array[:V.dofmap.index_map.size_local]
+        - p_old.x.array[:V.dofmap.index_map.size_local]
+    ))) if V.dofmap.index_map.size_local > 0 else 0.0
+    error_Linf = domain.comm.allreduce(phi_diff_local, op=MPI.MAX)
+
     # G. State update (advance n -> n+1) and history field
     u_n.x.array[:] = u_new.x.array
     v_n.x.array[:] = v_new.x.array
@@ -611,12 +671,72 @@ for i in range(1, num_steps + 1):
         B_bot.append([np.sum(R_bot), t_phys])
         B_left.append([np.sum(R_left), t_phys])
 
+    step_wallclock = time.time() - step_wall_start
+
     if i % save_freq == 0:
         out_file_name.write_function(p_new, t_phys)
         out_file_name_u.write_function(u_new, t_phys)
+
+        # Global energy integrals (all-reduced SUM).
+        E_el   = domain.comm.allreduce(fem.assemble_scalar(E_elastic_form),  op=MPI.SUM)
+        E_kin  = domain.comm.allreduce(fem.assemble_scalar(E_kinetic_form),  op=MPI.SUM)
+        E_frac = domain.comm.allreduce(fem.assemble_scalar(E_fracture_form), op=MPI.SUM)
+        E_ext  = domain.comm.allreduce(fem.assemble_scalar(E_external_form), op=MPI.SUM)
+        E_tot  = E_frac + E_el + E_kin - E_ext
+
+        # Diagnostic splits
+        E_pos  = domain.comm.allreduce(fem.assemble_scalar(E_pos_form),  op=MPI.SUM)
+        E_neg  = domain.comm.allreduce(fem.assemble_scalar(E_neg_form),  op=MPI.SUM)
+        E_full = domain.comm.allreduce(fem.assemble_scalar(E_full_form), op=MPI.SUM)
+
+        # phi bounds (reference tracks dmin/dmax).
+        phi_local_arr = p_new.x.array[:V.dofmap.index_map.size_local]
+        phi_min = domain.comm.allreduce(float(phi_local_arr.min()) if phi_local_arr.size else  np.inf, op=MPI.MIN)
+        phi_max = domain.comm.allreduce(float(phi_local_arr.max()) if phi_local_arr.size else -np.inf, op=MPI.MAX)
+
+        # Crack-tip coordinates (two candidates, reference style).
+        tipY, tipX = crack_tip_coords()
+
         if rank == 0:
-            plot_force_disp(B_bot, "bot_rxn", out_file)
-            plot_force_disp(B_left, "left_rxn", out_file)
+            print(f"  E_pos={E_pos:.3e}  E_neg={E_neg:.3e}  E_full_deg={E_full:.3e}  "
+                  f"E_el(split)={E_el:.3e}  E_kin={E_kin:.3e}", flush=True)
+            Data.append([
+                i, t_phys,
+                E_full, E_kin, E_frac, E_ext, E_tot,
+                phi_min, phi_max,
+                tipY[0], tipY[1],   # x_at_maxY, y_maxY
+                tipX[0], tipX[1],   # x_maxX,    y_at_maxX
+                error_Linf, step_wallclock, dt_val_f,
+                E_pos, E_neg, E_el,
+            ])
+
+            # plot_force_disp(B_bot,  "bot_rxn",  out_file)
+            # plot_force_disp(B_left, "left_rxn", out_file)
+
+            header = ("Increment\tTime\tElasticEnergy\tKineticEnergy\tFractureEnergy\t"
+                      "ExternalEnergy\tTotalEnergy\tdmin\tdmax\t"
+                      "y_x_dmax\ty_y_dmax\tx_x_dmax\tx_y_dmax\t"
+                      "error_Linf\tTimestep\tdt\tE_pos\tE_neg\tE_elastic_full")
+            D_arr = np.array(Data)
+            np.savetxt(f"{out_file}/simulation.data", D_arr,
+                       delimiter="\t", header=header)
+
+            import matplotlib.pyplot as _plt
+            _plt.figure()
+            _plt.plot(D_arr[:, 1], D_arr[:, 2], label="elastic")
+            # _plt.plot(D_arr[:, 1], D_arr[:, 3], label="kinetic")
+            # _plt.plot(D_arr[:, 1], D_arr[:, 4], label="fracture")
+            # _plt.plot(D_arr[:, 1], D_arr[:, 6], "k--", label="total")
+            _plt.xlabel("t [s]"); _plt.ylabel("Elastic energy [J/m]"); _plt.legend()
+            _plt.savefig(f"{out_file}/energies.png"); _plt.close()
+
+            _plt.figure()
+            _plt.plot(D_arr[:, 1], D_arr[:, 9],  label="x @ max-y tip")
+            _plt.plot(D_arr[:, 1], D_arr[:, 10], label="y @ max-y tip")
+            _plt.plot(D_arr[:, 1], D_arr[:, 11], label="x @ max-x tip")
+            _plt.plot(D_arr[:, 1], D_arr[:, 12], label="y @ max-x tip")
+            _plt.xlabel("t [s]"); _plt.ylabel("coord [m]"); _plt.legend()
+            _plt.savefig(f"{out_file}/crack_tip.png"); _plt.close()
 
 end_time   = time.time()
 total_time = end_time - start_time
